@@ -9,9 +9,18 @@ import sqlite3
 import os
 import time
 import logging
+import hmac
+import hashlib
+import secrets
 from typing import Optional, Dict, Any, List, Tuple
 from datetime import datetime, timezone
-import bcrypt
+
+try:
+    import bcrypt
+    HAS_BCRYPT = True
+except ImportError:
+    bcrypt = None  # type: ignore
+    HAS_BCRYPT = False
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("Database")
@@ -137,14 +146,30 @@ def init_db(db_path: str = DEFAULT_DB_PATH) -> None:
 
 
 def hash_password(password: str) -> str:
-    """Hash a plaintext password using bcrypt with standard salt rounds."""
-    salt = bcrypt.gensalt(rounds=12)
-    return bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
+    """Hash a plaintext password using bcrypt if available, or pbkdf2_hmac as standard library fallback."""
+    if HAS_BCRYPT and bcrypt is not None:
+        salt = bcrypt.gensalt(rounds=12)
+        return bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
+    else:
+        salt = secrets.token_hex(16)
+        key = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 100000)
+        return f"pbkdf2:sha256:100000${salt}${key.hex()}"
 
 
 def check_password(password: str, hashed_password: str) -> bool:
-    """Verify plaintext password against bcrypt hash."""
-    return bcrypt.checkpw(password.encode("utf-8"), hashed_password.encode("utf-8"))
+    """Verify plaintext password against bcrypt hash or pbkdf2 hash."""
+    if hashed_password.startswith("pbkdf2:"):
+        try:
+            _, algo, iters, salt, key = hashed_password.split("$")
+            new_key = hashlib.pbkdf2_hmac(algo.split(":")[-1], password.encode("utf-8"), salt.encode("utf-8"), int(iters))
+            return hmac.compare_digest(new_key.hex(), key)
+        except Exception:
+            return False
+    elif HAS_BCRYPT and bcrypt is not None:
+        return bcrypt.checkpw(password.encode("utf-8"), hashed_password.encode("utf-8"))
+    else:
+        # Cannot verify bcrypt hash without bcrypt library
+        return False
 
 
 def seed_default_users(cursor: sqlite3.Cursor) -> None:
