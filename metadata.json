@@ -1,0 +1,6 @@
+{
+  "name": "Predictive Maintenance IoT Dashboard",
+  "description": "Enterprise Predictive Maintenance system for rotary machinery with synthetic IoT telemetry, HiveMQ MQTT, SQLite, ML anomaly detection, and real-time dashboard.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
